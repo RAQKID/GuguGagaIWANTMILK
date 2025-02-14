@@ -1,6 +1,12 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
+const express = require('express');
+const { Client, GatewayIntentBits, EmbedBuilder, PermissionsBitField } = require('discord.js');
 
+// Initialize Express
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Initialize Discord Bot
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -13,7 +19,7 @@ const client = new Client({
 const stickyMessages = new Map();
 const prefix = '*';
 const allowedChannelId = process.env.CHANNELID;
-const randomTexts = process.env.RESPONSES.split(',');
+const randomTexts = process.env.RESPONSES ? process.env.RESPONSES.split(',') : [];
 const userLastMessage = new Map();
 
 // Generates a random color in hexadecimal format
@@ -21,32 +27,60 @@ function getRandomColor() {
     return `#${Math.floor(Math.random() * 16777215).toString(16)}`;
 }
 
+// Express Home Route (Server Status Check)
+app.get('/', (req, res) => {
+    res.json({
+        status: 'running',
+        bot: client.user ? client.user.tag : 'Not logged in',
+        uptime: process.uptime(),
+    });
+});
+
+// Start Express Server
+app.listen(PORT, () => {
+    console.log(`🚀 Express server running on http://localhost:${PORT}`);
+});
+
+// Discord Bot Ready Event
 client.once('ready', () => {
     console.log(`✅ Logged in as ${client.user.tag}!`);
 });
+
+// Function to check if a user has ADMINISTRATOR permission
+function hasAdminPermission(member) {
+    return member.permissions.has(PermissionsBitField.Flags.Administrator);
+}
 
 // Listen for messages
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
 
-    // Help Command with Embed
+    // Help Command with ADMINISTRATOR Permission Check
     if (message.content.startsWith('-help')) {
+        if (!hasAdminPermission(message.member)) {
+            return message.reply('❌ You do not have permission to use this command.');
+        }
+
         const helpEmbed = new EmbedBuilder()
             .setTitle("📌 Help Commands")
             .setColor(getRandomColor())
             .setDescription("List of available commands:")
             .addFields(
-                { name: "`-help`", value: "Show this help message." },
-                { name: "`-stick <message>`", value: "Set a sticky message in the channel." },
-                { name: "`-unsticky`", value: "Remove the sticky message from the channel." }
+                { name: "`-help`", value: "Show this help message. (Admin only)" },
+                { name: "`-stick <message>`", value: "Set a sticky message in the channel. (Admin only)" },
+                { name: "`-unsticky`", value: "Remove the sticky message from the channel. (Admin only)" }
             )
             .setFooter({ text: "STICKY MESSAGE | made by Raqkidsss" });
 
         return message.channel.send({ embeds: [helpEmbed] });
     }
 
-    // Command to set a sticky message
+    // Command to set a sticky message (Admin Only)
     if (message.content.startsWith('-stick')) {
+        if (!hasAdminPermission(message.member)) {
+            return message.reply('❌ You do not have permission to use this command.');
+        }
+
         const content = message.content.slice(7).trim();
         if (!content) return message.reply('❌ Please provide a sticky message.');
 
@@ -60,8 +94,12 @@ client.on('messageCreate', async (message) => {
         return message.channel.send({ embeds: [stickEmbed] });
     }
 
-    // Command to remove the sticky message
+    // Command to remove the sticky message (Admin Only)
     if (message.content.startsWith('-unsticky')) {
+        if (!hasAdminPermission(message.member)) {
+            return message.reply('❌ You do not have permission to use this command.');
+        }
+
         if (!stickyMessages.has(message.channel.id)) {
             return message.reply('❌ There is no sticky message set in this channel.');
         }
@@ -99,7 +137,7 @@ client.on('messageCreate', async (message) => {
         stickyData.lastMessage = await message.channel.send(stickyData.content);
     }
 
-    // API Key DM Command
+    // API Key DM Command (NO ADMIN CHECK - Available to all users)
     if (message.content.startsWith(`${prefix}apikey`)) {
         if (message.channel.id !== allowedChannelId) {
             return message.channel.send('This command can only be used in a specific channel.');
@@ -129,5 +167,5 @@ client.on('messageCreate', async (message) => {
     }
 });
 
-// Login to Discord with your app's token
+// Login to Discord with your bot's token
 client.login(process.env.TOKEN);
